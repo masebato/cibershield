@@ -1,0 +1,1495 @@
+openapi: 3.0.3
+
+info:
+  title: CiberShield Colombia API
+  version: 1.0.0
+  description: >
+    Plataforma SOA de monitoreo de ciberseguridad para PYMEs colombianas.
+    Centraliza autenticación, escaneo de activos, análisis de riesgos,
+    alertas, cumplimiento normativo y generación de reportes ejecutivos.
+
+servers:
+  - url: http://localhost:3000
+
+tags:
+  - name: Gateway
+    description: Estado del gateway
+  - name: Auth
+    description: Autenticación y gestión de usuarios (SAU)
+  - name: Shodan
+    description: Consultas al conector Shodan (SCS)
+  - name: Analysis
+    description: Análisis de riesgos por activo (SAR)
+  - name: Alerts
+    description: Alertas y notificaciones (SAN)
+  - name: Compliance
+    description: Cumplimiento normativo (SCN)
+  - name: Reports
+    description: Reportes ejecutivos (SRE)
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+
+    AccessTokenResponse:
+      type: object
+      required: [access_token, refresh_token]
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+
+    Asset:
+      type: object
+      required: [id, type, value, created_at]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [ip, cidr, domain, subdomain]
+        value:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    UserProfile:
+      type: object
+      required: [id, email, role, company_id, company_name, assets]
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+        company_id:
+          type: integer
+        company_name:
+          type: string
+        sector:
+          type: string
+        assets:
+          type: array
+          items:
+            $ref: '#/components/schemas/Asset'
+
+    Finding:
+      type: object
+      required: [id, type, description, cvssScore, level, affectedAsset, recommendation]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+        description:
+          type: string
+        cvssScore:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 10
+        level:
+          type: string
+          enum: [critico, alto, medio, bajo]
+        affectedAsset:
+          type: string
+        recommendation:
+          type: string
+
+    AnalysisResult:
+      type: object
+      required: [analysisId, ip, globalRisk, maxCvss, findings, analyzedAt]
+      properties:
+        analysisId:
+          type: integer
+        ip:
+          type: string
+        globalRisk:
+          type: string
+          enum: [critico, alto, medio, bajo]
+        maxCvss:
+          type: number
+          format: float
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Finding'
+        analyzedAt:
+          type: string
+          format: date-time
+
+    Alert:
+      type: object
+      required: [id, company_id, type, asset, risk_level, summary, read, created_at]
+      properties:
+        id:
+          type: integer
+        company_id:
+          type: integer
+        type:
+          type: string
+        asset:
+          type: string
+        risk_level:
+          type: string
+          enum: [critico, alto, medio, bajo]
+        summary:
+          type: string
+        read:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    ComplianceObservation:
+      type: object
+      required: [ruleId, norm, title, compliant]
+      properties:
+        ruleId:
+          type: string
+        norm:
+          type: string
+        title:
+          type: string
+        compliant:
+          type: boolean
+        findingRef:
+          type: integer
+        observation:
+          type: string
+        recommendation:
+          type: string
+
+    ComplianceResult:
+      type: object
+      required: [sector, complianceStatus, nonCompliantCount, compliantCount, observations]
+      properties:
+        sector:
+          type: string
+        complianceStatus:
+          type: string
+          enum: [compliant, partial, non_compliant]
+        nonCompliantCount:
+          type: integer
+        compliantCount:
+          type: integer
+        observations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComplianceObservation'
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  # ── Gateway ────────────────────────────────────────────────────────────────
+
+  /health:
+    get:
+      tags: [Gateway]
+      summary: Estado del gateway
+      description: Endpoint público de liveness. No requiere autenticación.
+      operationId: gateway.health
+      security: []
+      responses:
+        '200':
+          description: Gateway operativo
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [service, status]
+                properties:
+                  service:
+                    type: string
+                    example: gateway
+                  status:
+                    type: string
+                    example: ok
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ── SAU — Auth & Usuarios ──────────────────────────────────────────────────
+
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Registro de nuevo usuario
+      description: Crea una cuenta de empresa. Endpoint público.
+      operationId: auth.register
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, company_name]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+                company_name:
+                  type: string
+                sector:
+                  type: string
+      responses:
+        '200':
+          description: Registro exitoso
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/AccessTokenResponse'
+                  - type: object
+                    required: [user]
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/UserProfile'
+        '400':
+          description: Datos inválidos o email ya registrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Inicio de sesión
+      description: Autentica credenciales y retorna tokens JWT. Endpoint público.
+      operationId: auth.login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login exitoso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessTokenResponse'
+        '400':
+          description: Credenciales malformadas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Credenciales inválidas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Cierre de sesión
+      description: Invalida el refresh token del usuario.
+      operationId: auth.logout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: Sesión cerrada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Sesión cerrada correctamente
+        '400':
+          description: Token inválido o ausente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/profile:
+    get:
+      tags: [Auth]
+      summary: Obtener perfil del usuario
+      description: Retorna el perfil del usuario autenticado junto con su empresa y activos.
+      operationId: auth.profile.get
+      responses:
+        '200':
+          description: Perfil del usuario
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '400':
+          description: Solicitud inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Token inválido o expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags: [Auth]
+      summary: Actualizar perfil de empresa
+      description: Modifica el nombre de empresa y/o sector del usuario autenticado.
+      operationId: auth.profile.update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                company_name:
+                  type: string
+                sector:
+                  type: string
+      responses:
+        '200':
+          description: Perfil actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '400':
+          description: Datos inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/assets:
+    post:
+      tags: [Auth]
+      summary: Registrar activo
+      description: Agrega un activo (IP, CIDR, dominio, subdominio) a la empresa del usuario.
+      operationId: auth.assets.create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, value]
+              properties:
+                type:
+                  type: string
+                  enum: [ip, cidr, domain, subdomain]
+                value:
+                  type: string
+      responses:
+        '200':
+          description: Activo registrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Asset'
+        '400':
+          description: Tipo o valor inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/assets/{id}:
+    delete:
+      tags: [Auth]
+      summary: Eliminar activo
+      description: Elimina un activo registrado por su ID.
+      operationId: auth.assets.delete
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: ID del activo
+      responses:
+        '200':
+          description: Activo eliminado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Activo eliminado correctamente
+        '400':
+          description: ID inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/password-reset:
+    post:
+      tags: [Auth]
+      summary: Solicitar restablecimiento de contraseña
+      description: Envía un email con enlace de recuperación. Endpoint público.
+      operationId: auth.passwordReset
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Email de recuperación enviado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Si el correo existe, recibirá instrucciones de recuperación
+        '400':
+          description: Email inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ── SCS — Shodan Connector ─────────────────────────────────────────────────
+
+  /api/scs/health:
+    get:
+      tags: [Shodan]
+      summary: Estado del conector Shodan
+      description: Verifica conectividad con la API de Shodan.
+      operationId: scs.health
+      responses:
+        '200':
+          description: Conector operativo
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [service, status]
+                properties:
+                  service:
+                    type: string
+                    example: scs
+                  status:
+                    type: string
+                    example: ok
+        '400':
+          description: Solicitud inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno o Shodan no disponible
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/scs/host:
+    post:
+      tags: [Shodan]
+      summary: Información de un host
+      description: Obtiene datos de Shodan para una dirección IP específica.
+      operationId: scs.host
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ip]
+              properties:
+                ip:
+                  type: string
+      responses:
+        '200':
+          description: Datos del host
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Respuesta raw de Shodan para el host
+                additionalProperties: true
+        '400':
+          description: IP inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/scs/search:
+    post:
+      tags: [Shodan]
+      summary: Búsqueda en Shodan
+      description: Ejecuta una búsqueda libre en Shodan con paginación opcional.
+      operationId: scs.search
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+                page:
+                  type: integer
+                  minimum: 1
+                  default: 1
+                minify:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: Resultados de búsqueda
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Query inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/scs/count:
+    post:
+      tags: [Shodan]
+      summary: Contar resultados en Shodan
+      description: Retorna el número de resultados para una query sin consumir créditos de búsqueda.
+      operationId: scs.count
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+      responses:
+        '200':
+          description: Conteo de resultados
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [total]
+                properties:
+                  total:
+                    type: integer
+        '400':
+          description: Query inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/scs/dns/domain:
+    post:
+      tags: [Shodan]
+      summary: Información DNS de un dominio
+      description: Obtiene subdominios e IPs asociadas a un dominio vía Shodan DNS.
+      operationId: scs.dns.domain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [domain]
+              properties:
+                domain:
+                  type: string
+      responses:
+        '200':
+          description: Datos DNS del dominio
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Dominio inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/scs/dns/resolve:
+    post:
+      tags: [Shodan]
+      summary: Resolución DNS masiva
+      description: Resuelve una lista de hostnames a sus direcciones IP.
+      operationId: scs.dns.resolve
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hostnames]
+              properties:
+                hostnames:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+      responses:
+        '200':
+          description: Mapa hostname → IP
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+        '400':
+          description: Lista de hostnames inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/scs/alert:
+    post:
+      tags: [Shodan]
+      summary: Crear alerta de monitoreo en Shodan
+      description: Crea una alerta en Shodan para notificar cambios sobre un conjunto de IPs.
+      operationId: scs.alert
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, ips]
+              properties:
+                name:
+                  type: string
+                ips:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+      responses:
+        '200':
+          description: Alerta creada
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Datos inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ── SAR — Análisis de Riesgos ──────────────────────────────────────────────
+
+  /api/sar/analyze:
+    post:
+      tags: [Analysis]
+      summary: Analizar un activo
+      description: Ejecuta análisis de riesgo completo sobre una IP, CIDR o dominio y retorna hallazgos CVE.
+      operationId: sar.analyze
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [asset_type, asset_value]
+              properties:
+                asset_type:
+                  type: string
+                  enum: [ip, cidr, domain]
+                asset_value:
+                  type: string
+      responses:
+        '200':
+          description: Resultado del análisis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResult'
+        '400':
+          description: Activo inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/sar/assets/{companyId}:
+    get:
+      tags: [Analysis]
+      summary: Resumen de riesgos por empresa
+      description: Retorna el estado de riesgo consolidado de todos los activos de una empresa.
+      operationId: sar.assets.list
+      parameters:
+        - in: path
+          name: companyId
+          required: true
+          schema:
+            type: integer
+          description: ID de la empresa
+      responses:
+        '200':
+          description: Lista de activos con métricas de riesgo
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [asset, global_risk, max_cvss, critical, high, medium, low]
+                  properties:
+                    asset:
+                      type: string
+                    global_risk:
+                      type: string
+                      enum: [critico, alto, medio, bajo]
+                    max_cvss:
+                      type: number
+                      format: float
+                    critical:
+                      type: integer
+                    high:
+                      type: integer
+                    medium:
+                      type: integer
+                    low:
+                      type: integer
+        '400':
+          description: ID de empresa inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/sar/analysis/{id}:
+    get:
+      tags: [Analysis]
+      summary: Detalle de un análisis
+      description: Retorna el resultado completo de un análisis por su ID, incluyendo todos los hallazgos.
+      operationId: sar.analysis.getById
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: ID del análisis
+      responses:
+        '200':
+          description: Análisis completo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResult'
+        '400':
+          description: ID inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ── SAN — Alertas & Notificaciones ────────────────────────────────────────
+
+  /api/san/alerts/{companyId}:
+    get:
+      tags: [Alerts]
+      summary: Listar alertas de una empresa
+      description: Retorna las alertas de seguridad con soporte para filtrar no leídas y paginación.
+      operationId: san.alerts.list
+      parameters:
+        - in: path
+          name: companyId
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: unread
+          schema:
+            type: boolean
+          description: Filtrar solo alertas no leídas
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Lista de alertas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Alert'
+        '400':
+          description: Parámetros inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/san/alerts/{id}/read:
+    put:
+      tags: [Alerts]
+      summary: Marcar alerta como leída
+      description: Actualiza el estado de lectura de una alerta específica.
+      operationId: san.alerts.markRead
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Alerta marcada como leída
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Alert'
+        '400':
+          description: ID inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/san/alerts/read-all:
+    put:
+      tags: [Alerts]
+      summary: Marcar todas las alertas como leídas
+      description: Marca como leídas todas las alertas del usuario autenticado.
+      operationId: san.alerts.markAllRead
+      responses:
+        '200':
+          description: Todas las alertas marcadas como leídas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated:
+                    type: integer
+                    description: Número de alertas actualizadas
+        '400':
+          description: Solicitud inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/san/alerts/{id}:
+    delete:
+      tags: [Alerts]
+      summary: Eliminar alerta
+      description: Elimina permanentemente una alerta por su ID.
+      operationId: san.alerts.delete
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Alerta eliminada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Alerta eliminada correctamente
+        '400':
+          description: ID inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ── SCN — Cumplimiento Normativo ───────────────────────────────────────────
+
+  /api/scn/evaluate:
+    post:
+      tags: [Compliance]
+      summary: Evaluar cumplimiento normativo
+      description: Evalúa hallazgos contra las normas del sector (ISO 27001, Circular 052 SFC, RGPD Colombia, etc.).
+      operationId: scn.evaluate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [findings]
+              properties:
+                findings:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Finding'
+                  minItems: 1
+                sector:
+                  type: string
+      responses:
+        '200':
+          description: Resultado de cumplimiento
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComplianceResult'
+        '400':
+          description: Hallazgos inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/scn/norms:
+    get:
+      tags: [Compliance]
+      summary: Listar normas disponibles
+      description: Retorna el catálogo de normas y reglas de cumplimiento configuradas en el sistema.
+      operationId: scn.norms.list
+      responses:
+        '200':
+          description: Catálogo de normas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [id, norm, title, sector]
+                  properties:
+                    id:
+                      type: string
+                    norm:
+                      type: string
+                    title:
+                      type: string
+                    sector:
+                      type: string
+                    description:
+                      type: string
+        '400':
+          description: Solicitud inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ── SRE — Reportes Ejecutivos ──────────────────────────────────────────────
+
+  /api/sre/report/{companyId}/latest:
+    get:
+      tags: [Reports]
+      summary: Obtener último reporte en PDF
+      description: Descarga el reporte ejecutivo más reciente de la empresa en formato PDF.
+      operationId: sre.report.latest
+      parameters:
+        - in: path
+          name: companyId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Reporte PDF
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: ID de empresa inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/sre/report/{companyId}/list:
+    get:
+      tags: [Reports]
+      summary: Listar reportes de una empresa
+      description: Retorna el historial de reportes ejecutivos generados para la empresa.
+      operationId: sre.report.list
+      parameters:
+        - in: path
+          name: companyId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Lista de reportes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [id, company_id, asset, global_risk, generated_at]
+                  properties:
+                    id:
+                      type: integer
+                    company_id:
+                      type: integer
+                    asset:
+                      type: string
+                    global_risk:
+                      type: string
+                      enum: [critico, alto, medio, bajo]
+                    analysis_id:
+                      type: integer
+                    generated_at:
+                      type: string
+                      format: date-time
+        '400':
+          description: ID inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/sre/report/{companyId}/generate:
+    post:
+      tags: [Reports]
+      summary: Generar nuevo reporte ejecutivo
+      description: Genera y persiste un reporte ejecutivo PDF para la empresa a partir de un análisis.
+      operationId: sre.report.generate
+      parameters:
+        - in: path
+          name: companyId
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [asset]
+              properties:
+                analysisId:
+                  type: integer
+                asset:
+                  type: string
+                globalRisk:
+                  type: string
+                  enum: [critico, alto, medio, bajo]
+      responses:
+        '200':
+          description: Reporte generado
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, company_id, asset, generated_at]
+                properties:
+                  id:
+                    type: integer
+                  company_id:
+                    type: integer
+                  asset:
+                    type: string
+                  global_risk:
+                    type: string
+                    enum: [critico, alto, medio, bajo]
+                  analysis_id:
+                    type: integer
+                  generated_at:
+                    type: string
+                    format: date-time
+        '400':
+          description: Datos inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'

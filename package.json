@@ -1,0 +1,17 @@
+{
+  "name": "cibershield",
+  "version": "1.0.0",
+  "description": "Cybersecurity threat detection and scanning API",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@masebato/apix": "file:../apix"
+  }
+}
