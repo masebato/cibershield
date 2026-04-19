@@ -12,6 +12,6 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@masebato/apix": "file:../apix"
+    "@masebato/apix": "git+https://github.com/masebato/apix.git"
   }
 }
