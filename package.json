@@ -14,5 +14,8 @@
   "dependencies": {
     "@masebato/apix": "^1.2.0",
     "axios": "^1.15.1"
+  },
+  "overrides": {
+    "my-logger": "file:./my-logger-shim"
   }
 }
