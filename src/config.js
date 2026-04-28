@@ -23,5 +23,6 @@ module.exports = {
 
   shodan: {
     apiKey: process.env.SHODAN_API_KEY || "",
+    mockOnFailure: process.env.SHODAN_MOCK_ON_FAILURE !== "false",
   },
 };

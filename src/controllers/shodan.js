@@ -13,7 +13,7 @@ module.exports.host = async (req, res) => {
 };
 
 module.exports.search = async (req, res) => {
-  const { query, page = 1, minify = false } = req.body;
+  const { query, page = 1, minify = true } = req.body;
   const data = await shodanService.search(query, page, minify);
   res.json(data);
 };

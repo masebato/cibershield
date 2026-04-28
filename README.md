@@ -48,7 +48,10 @@ JWT_REFRESH_EXPIRY=7d
 
 # Shodan
 SHODAN_API_KEY=tu-api-key
+SHODAN_MOCK_ON_FAILURE=true
 ```
+
+`SHODAN_MOCK_ON_FAILURE=true` habilita un fallback con reportes mock aleatorios para `/api/scs/host` cuando la API de Shodan no responde.
 
 > Las tablas se crean automáticamente al iniciar el servidor (`CREATE TABLE IF NOT EXISTS`).
 
@@ -94,11 +97,13 @@ https://cibershield-production.up.railway.app/docs/
 |--------|------|-------------|
 | GET | `/api/scs/health` | Estado del conector Shodan |
 | POST | `/api/scs/host` | Info de un host por IP |
-| POST | `/api/scs/search` | Búsqueda libre con paginación |
+| POST | `/api/scs/search` | Búsqueda free-tier (sin filtros y página 1 cuando no hay créditos) |
 | POST | `/api/scs/count` | Conteo de resultados sin consumir créditos |
 | POST | `/api/scs/dns/domain` | Subdominios e IPs de un dominio |
 | POST | `/api/scs/dns/resolve` | Resolución DNS masiva (hostnames → IPs) |
-| POST | `/api/scs/alert` | Crea alerta de monitoreo en Shodan |
+| POST | `/api/scs/alert` | Crea alerta de monitoreo (requiere plan con monitored IPs) |
+
+> En cuentas gratuitas (`oss`), `search` se limita automáticamente para evitar consumo de créditos y `alert` responde `403` si el plan no soporta monitoreo.
 
 ### Análisis de Riesgos — SAR (`/api/sar`)
 
