@@ -9,7 +9,10 @@ info:
     alertas, cumplimiento normativo y generación de reportes ejecutivos.
 
 servers:
+  - url: https://cibershield-production.up.railway.app
+    description: Production
   - url: http://localhost:3000
+    description: Local
 
 tags:
   - name: Gateway
