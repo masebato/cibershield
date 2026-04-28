@@ -1,28 +1,45 @@
 'use strict';
 
+const jwt    = require('jsonwebtoken');
 const server = require('@masebato/apix');
+const config = require('./config');
+const db     = require('./database');
+const { migrate } = require('./database/migrate');
 
 server.openapi     = './src/openapi/openapi.yml';
 server.controllers = './src/controllers/index.js';
 
-// server.securityHandlers = {
-//   BearerAuth: async (req, scopes, schema) => {
-//     const token = req.headers.authorization?.replace('Bearer ', '');
-//     if (!token) throw new Error('Missing token');
-//     req.user = await verifyToken(token);
-//     return true;
-//   },
-// };
+server.securityHandlers = {
+  bearerAuth: async (req) => {
+    const header = req.headers['authorization'];
+    if (!header || !header.startsWith('Bearer ')) {
+      const err = new Error('Missing or malformed Authorization header');
+      err.status = 401;
+      throw err;
+    }
+    const token = header.slice(7);
+    try {
+      req.user = jwt.verify(token, config.jwt.secret);
+      return true;
+    } catch {
+      const err = new Error('Invalid or expired token');
+      err.status = 401;
+      throw err;
+    }
+  },
+};
 
-server.onStart = async (app, openapi, config) => {
-  console.log(`Cibershield started [${config.nodeEnv}] on port ${config.port}`);
+server.onStart = async (app, openapi, cfg) => {
+  await migrate();
+  console.log(`Cibershield started [${cfg.nodeEnv}] on port ${cfg.port}`);
 };
 
 server.onShutdown = async () => {
+  await db.close();
   console.log('Cibershield shutting down');
 };
 
-server.onError = async (err, req, res) => {
+server.onError = async (err) => {
   return err;
 };
 
