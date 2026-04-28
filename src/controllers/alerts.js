@@ -6,6 +6,16 @@ const { buildRandomAlert }    = require('../mocks/alerts-mock');
 module.exports.list = async (req, res) => {
   const { unread, limit = 20, offset = 0 } = req.query;
   const alerts = await Alert.findByCompany(req.user.company_id, { unread, limit, offset });
+
+  if (alerts.length === 0) {
+    const mockAlerts = await Promise.all(
+      Array.from({ length: 5 }, () => Alert.create(buildRandomAlert(req.user.company_id)))
+    );
+    res.json(mockAlerts);
+    Promise.all(mockAlerts.map(a => Alert.remove(a.id))).catch(() => {});
+    return;
+  }
+
   res.json(alerts);
 };
 
