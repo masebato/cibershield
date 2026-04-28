@@ -44,6 +44,7 @@ module.exports["san.alerts.list"] = alertsController.list;
 module.exports["san.alerts.markRead"] = alertsController.markRead;
 module.exports["san.alerts.markAllRead"] = alertsController.markAllRead;
 module.exports["san.alerts.delete"] = alertsController.delete;
+module.exports["san.alerts.generateMock"] = alertsController.generateMock;
 
 // ── Compliance (SCN) ──────────────────────────────────────────────────────────
 

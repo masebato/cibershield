@@ -1,6 +1,7 @@
 'use strict';
 
-const Alert = require('../models/alert.model');
+const Alert                   = require('../models/alert.model');
+const { buildRandomAlert }    = require('../mocks/alerts-mock');
 
 module.exports.list = async (req, res) => {
   const { unread, limit = 20, offset = 0 } = req.query;
@@ -25,4 +26,15 @@ module.exports.delete = async (req, res) => {
   const deleted = await Alert.remove(id);
   if (!deleted) return res.status(400).json({ error: 'Alert not found' });
   res.json({ message: 'Alerta eliminada correctamente' });
+};
+
+module.exports.generateMock = async (req, res) => {
+  const count      = Math.min(Math.max(parseInt(req.query.count, 10) || 5, 1), 20);
+  const company_id = req.user.company_id;
+
+  const created = await Promise.all(
+    Array.from({ length: count }, () => Alert.create(buildRandomAlert(company_id)))
+  );
+
+  res.status(201).json({ generated: created.length, alerts: created });
 };
