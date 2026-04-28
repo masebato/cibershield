@@ -3,9 +3,8 @@
 const Alert = require('../models/alert.model');
 
 module.exports.list = async (req, res) => {
-  const companyId = parseInt(req.params.companyId, 10);
   const { unread, limit = 20, offset = 0 } = req.query;
-  const alerts = await Alert.findByCompany(companyId, { unread, limit, offset });
+  const alerts = await Alert.findByCompany(req.user.company_id, { unread, limit, offset });
   res.json(alerts);
 };
 

@@ -10,8 +10,7 @@ module.exports.analyze = async (req, res) => {
 };
 
 module.exports.assetsList = async (req, res) => {
-  const companyId = parseInt(req.params.companyId, 10);
-  const rows      = await Analysis.findByCompany(companyId);
+  const rows = await Analysis.findByCompany(req.user.company_id);
   res.json(rows.map((r) => ({
     asset:       r.asset,
     global_risk: r.global_risk,
