@@ -1,6 +1,7 @@
 'use strict';
 
 const Alert                   = require('../models/alert.model');
+const Asset                   = require('../models/asset.model');
 const { buildRandomAlert }    = require('../mocks/alerts-mock');
 
 module.exports.list = async (req, res) => {
@@ -8,8 +9,10 @@ module.exports.list = async (req, res) => {
   const alerts = await Alert.findByCompany(req.user.company_id, { unread, limit, offset });
 
   if (alerts.length === 0) {
-    const mockAlerts = await Promise.all(
-      Array.from({ length: 5 }, () => Alert.create(buildRandomAlert(req.user.company_id)))
+    const company_id  = req.user.company_id;
+    const assetValues = (await Asset.findByCompany(company_id)).map(a => a.value);
+    const mockAlerts  = await Promise.all(
+      Array.from({ length: 5 }, () => Alert.create(buildRandomAlert(company_id, assetValues)))
     );
     res.json(mockAlerts);
     Promise.all(mockAlerts.map(a => Alert.remove(a.id))).catch(() => {});
@@ -39,11 +42,12 @@ module.exports.delete = async (req, res) => {
 };
 
 module.exports.generateMock = async (req, res) => {
-  const count      = Math.min(Math.max(parseInt(req.query.count, 10) || 5, 1), 20);
-  const company_id = req.user.company_id;
+  const count       = Math.min(Math.max(parseInt(req.query.count, 10) || 5, 1), 20);
+  const company_id  = req.user.company_id;
+  const assetValues = (await Asset.findByCompany(company_id)).map(a => a.value);
 
   const created = await Promise.all(
-    Array.from({ length: count }, () => Alert.create(buildRandomAlert(company_id)))
+    Array.from({ length: count }, () => Alert.create(buildRandomAlert(company_id, assetValues)))
   );
 
   res.status(201).json({ generated: created.length, alerts: created });

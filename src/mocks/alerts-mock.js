@@ -134,9 +134,10 @@ function randomItem(items) {
   return items[Math.floor(Math.random() * items.length)];
 }
 
-function buildRandomAlert(company_id) {
+function buildRandomAlert(company_id, assets = []) {
+  const pool     = assets.length > 0 ? assets : MOCK_ASSETS;
   const template = randomItem(ALERT_TEMPLATES);
-  const asset    = randomItem(MOCK_ASSETS);
+  const asset    = randomItem(pool);
   const summary  = randomItem(template.summaries);
 
   return {
