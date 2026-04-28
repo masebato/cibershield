@@ -1,5 +1,7 @@
 "use strict";
 
+require("dotenv").config();
+
 const jwt = require("jsonwebtoken");
 const server = require("@masebato/apix");
 const config = require("./config");

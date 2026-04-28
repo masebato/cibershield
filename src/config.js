@@ -8,7 +8,7 @@ module.exports = {
   database: {
     url:
       process.env.DATABASE_URL ||
-      "postgresql://postgres:postgres@localhost:5432/cibershield",
+      "postgresql://postgres:postgres@localhost:5432/railway",
     poolMax: parseInt(process.env.DB_POOL_MAX || "10", 10),
     ssl: process.env.DB_SSL === "true",
   },
